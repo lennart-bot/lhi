@@ -9,5 +9,4 @@ description = "Lightweight HTTP library"
 readme = "README.md"
 
 [dependencies]
-kern = "1.0.3"
 rustls = "0.17.0"
