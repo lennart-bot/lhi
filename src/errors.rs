@@ -24,6 +24,11 @@ impl HttpError {
     {
         Err(Self::new(err))
     }
+
+    /// Get error message
+    pub fn err_msg(&self) -> &str {
+        &self.0
+    }
 }
 
 /// Display implementation for HttpError

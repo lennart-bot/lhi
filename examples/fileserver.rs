@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::prelude::Read;
 
 fn main() {
-    let config = load_certificate("cert.pem", "key.pem").unwrap();
+    let config = load_certificate("examples/cert.pem", "examples/key.pem").unwrap();
     let _ = listen("[::]:8480", 4, config, |req| {
         let req = req?;
         let filename = req
