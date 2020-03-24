@@ -18,7 +18,7 @@ pub fn listen(
     threads: u8,
     tls_config: ServerConfig,
     handler: Handler,
-) -> Result<Vec<JoinHandle<()>>, HttpError> {
+) -> Result<Vec<Option<JoinHandle<()>>>, HttpError> {
     // listen
     let listener = TcpListener::bind(addr).or_else(HttpError::from)?;
     let listener = Arc::new(RwLock::new(listener));
@@ -29,9 +29,9 @@ pub fn listen(
     (0..threads).for_each(|_| {
         let listener = listener.clone();
         let tls_config = tls_config.clone();
-        handler_threads.push(thread::spawn(move || {
+        handler_threads.push(Some(thread::spawn(move || {
             accept_connections(listener, tls_config, handler)
-        }));
+        })));
     });
 
     // return threads
