@@ -15,7 +15,7 @@ use std::thread::{self, JoinHandle};
 /// Listen on TCP
 pub fn listen(
     addr: &str,
-    threads: usize,
+    threads: u8,
     tls_config: ServerConfig,
     handler: Handler,
 ) -> Result<Vec<JoinHandle<()>>, HttpError> {
