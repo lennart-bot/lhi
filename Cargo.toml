@@ -1,6 +1,6 @@
 [package]
 name = "lhi"
-version = "0.0.0-dev.0"
+version = "0.0.0-dev.1"
 authors = ["Lennart Heinrich <lennart@ltheinrich.de>"]
 edition = "2018"
 license = "ISC"
@@ -9,4 +9,5 @@ description = "Lightweight HTTP library"
 readme = "README.md"
 
 [dependencies]
+kern = "1.1.0"
 rustls = "0.17.0"

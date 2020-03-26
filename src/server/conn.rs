@@ -1,7 +1,7 @@
 //! HTTP connection handling
 
 use crate::server::{respond, Handler, HttpRequest, ResponseContent, ResponseData, Stream};
-use crate::HttpError;
+use kern::Fail;
 use rustls::{ServerConfig, ServerSession, Stream as RustlsStream};
 use std::io::prelude::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -37,7 +37,7 @@ pub fn handle_connection(
     mut stream: TcpStream,
     tls_config: Arc<ServerConfig>,
     handler: Handler,
-) -> Result<(), HttpError> {
+) -> Result<(), Fail> {
     // create TLS connection
     let mut session = ServerSession::new(&tls_config);
     let mut stream = RustlsStream::new(&mut session, &mut stream);
@@ -56,8 +56,8 @@ pub fn handle_connection(
         };
 
         // respond
-        stream.write_all(&response).or_else(HttpError::from)?;
-        stream.flush().or_else(HttpError::from)?;
+        stream.write_all(&response).or_else(Fail::from)?;
+        stream.flush().or_else(Fail::from)?;
     }
 
     // done
@@ -65,7 +65,7 @@ pub fn handle_connection(
 }
 
 // Read until \r\n\r\n (just working, uncommented)
-fn read_header(stream: &mut Stream) -> Result<(String, Vec<u8>), HttpError> {
+fn read_header(stream: &mut Stream) -> Result<(String, Vec<u8>), Fail> {
     let mut header = Vec::new();
     let mut rest = Vec::new();
     let mut buf = vec![0u8; 8192];
@@ -73,7 +73,7 @@ fn read_header(stream: &mut Stream) -> Result<(String, Vec<u8>), HttpError> {
     'l: loop {
         let length = match stream.read(&mut buf) {
             Ok(length) => length,
-            Err(err) => return HttpError::from(err),
+            Err(err) => return Fail::from(err),
         };
         for (i, &c) in buf.iter().enumerate() {
             if c == b'\r' {
@@ -81,7 +81,7 @@ fn read_header(stream: &mut Stream) -> Result<(String, Vec<u8>), HttpError> {
                     let mut buf_temp = vec![0u8; buf.len() - (i + 4)];
                     match stream.read(&mut buf_temp) {
                         Ok(_) => {}
-                        Err(err) => return HttpError::from(err),
+                        Err(err) => return Fail::from(err),
                     };
                     let buf2 = [&buf[..], &buf_temp[..]].concat();
                     if buf2[i + 1] == b'\n' && buf2[i + 2] == b'\r' && buf2[i + 3] == b'\n' {
@@ -111,7 +111,7 @@ fn read_header(stream: &mut Stream) -> Result<(String, Vec<u8>), HttpError> {
     Ok((
         match String::from_utf8(header) {
             Ok(header) => header,
-            Err(err) => return HttpError::from(err),
+            Err(err) => return Fail::from(err),
         },
         rest,
     ))

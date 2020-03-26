@@ -1,7 +1,7 @@
 //! HTTP request parsing
 
 use crate::server::Stream;
-use crate::HttpError;
+use kern::Fail;
 use std::collections::BTreeMap;
 use std::io::prelude::Read;
 
@@ -28,18 +28,18 @@ impl<'a> HttpRequest<'a> {
         raw_header: &'a str,
         mut raw_body: Vec<u8>,
         stream: &mut Stream,
-    ) -> Result<Self, HttpError> {
+    ) -> Result<Self, Fail> {
         // split header
         let mut header = raw_header.lines();
         let mut reqln = header
             .next()
-            .ok_or_else(|| HttpError::new("empty header"))?
+            .ok_or_else(|| Fail::new("empty header"))?
             .split(' ');
 
         // parse method
         let method = if reqln
             .next()
-            .ok_or_else(|| HttpError::new("no method in header"))?
+            .ok_or_else(|| Fail::new("no method in header"))?
             == "POST"
         {
             HttpMethod::POST
@@ -53,7 +53,7 @@ impl<'a> HttpRequest<'a> {
             let mut split_url = full_url.splitn(2, '?');
             let url = split_url
                 .next()
-                .ok_or_else(|| HttpError::new("no url in header"))?;
+                .ok_or_else(|| Fail::new("no url in header"))?;
             if let Some(params) = split_url.next() {
                 get_raw = params;
             }
@@ -85,21 +85,21 @@ impl<'a> HttpRequest<'a> {
             let con_len = buf_len
                 .parse::<usize>()
                 .ok()
-                .ok_or_else(|| HttpError::new("content-length is not of type usize"))?;
+                .ok_or_else(|| Fail::new("content-length is not of type usize"))?;
             // read body
             while raw_body.len() < con_len {
                 let mut rest_body = vec![0u8; 65536];
                 let length = stream
                     .read(&mut rest_body)
                     .ok()
-                    .ok_or_else(|| HttpError::new("stream broken"))?;
+                    .ok_or_else(|| Fail::new("stream broken"))?;
                 rest_body.truncate(length);
                 raw_body.append(&mut rest_body);
             }
             // TODO parse not UTF-8 body file upload (binary, etc.)
             body = String::from_utf8(raw_body)
                 .ok()
-                .ok_or_else(|| HttpError::new("body is not utf-8"))?;
+                .ok_or_else(|| Fail::new("body is not utf-8"))?;
         }
 
         // parse GET parameters and return
@@ -144,7 +144,7 @@ impl<'a> HttpRequest<'a> {
     }
 
     /// Parse POST parameters to map (EVERY CALL)
-    pub fn post(&self) -> Result<BTreeMap<&str, &str>, HttpError> {
+    pub fn post(&self) -> Result<BTreeMap<&str, &str>, Fail> {
         match self.headers.get("content-type") {
             Some(&content_type_header) => {
                 let mut content_type_header = content_type_header.split(';').map(|s| s.trim());
@@ -162,9 +162,8 @@ impl<'a> HttpRequest<'a> {
                         if content_type == "multipart/form-data" {
                             parse_post_upload(
                                 &self.body,
-                                boundary.ok_or_else(|| {
-                                    HttpError::new("post upload, but no boundary")
-                                })?,
+                                boundary
+                                    .ok_or_else(|| Fail::new("post upload, but no boundary"))?,
                             )
                         } else {
                             parse_parameters(&self.body)
@@ -182,7 +181,7 @@ impl<'a> HttpRequest<'a> {
 fn parse_post_upload<'a>(
     body: &'a str,
     boundary: &str,
-) -> Result<BTreeMap<&'a str, &'a str>, HttpError> {
+) -> Result<BTreeMap<&'a str, &'a str>, Fail> {
     // parameters map
     let mut params = BTreeMap::new();
     // split body into sections
@@ -197,7 +196,7 @@ fn parse_post_upload<'a>(
         let mut next_line = || {
             lines
                 .next()
-                .ok_or_else(|| HttpError::new("broken section in post body"))
+                .ok_or_else(|| Fail::new("broken section in post body"))
         };
 
         // parse name
@@ -212,7 +211,7 @@ fn parse_post_upload<'a>(
                     None
                 }
             })
-            .ok_or_else(|| HttpError::new("missing name in post body section"))?;
+            .ok_or_else(|| Fail::new("missing name in post body section"))?;
 
         // get value
         let value = if next_line()? == "" {
@@ -233,7 +232,7 @@ fn parse_post_upload<'a>(
 }
 
 // Parse GET parameters to map
-fn parse_parameters(raw: &str) -> Result<BTreeMap<&str, &str>, HttpError> {
+fn parse_parameters(raw: &str) -> Result<BTreeMap<&str, &str>, Fail> {
     // parameters map
     let mut params = BTreeMap::new();
 
@@ -243,7 +242,7 @@ fn parse_parameters(raw: &str) -> Result<BTreeMap<&str, &str>, HttpError> {
         let mut ps = p.splitn(2, '=');
         params.insert(
             ps.next()
-                .ok_or_else(|| HttpError::new("broken x-www-form-urlencoded parameters"))?
+                .ok_or_else(|| Fail::new("broken x-www-form-urlencoded parameters"))?
                 .trim(), // trimmed key
             if let Some(value) = ps.next() {
                 value.trim() // trimmed value
