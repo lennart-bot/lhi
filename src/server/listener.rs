@@ -1,6 +1,6 @@
 //! TCP listener
 
-use crate::server::{accept_connections, Handler};
+use crate::server::{accept_connections, Handler, HttpOptions};
 use kern::Fail;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{NoClientAuth, ServerConfig};
@@ -14,21 +14,29 @@ use std::thread::{self, JoinHandle};
 pub fn listen(
     addr: &str,
     threads: u8,
+    http_options: HttpOptions,
     tls_config: ServerConfig,
     handler: Handler,
 ) -> Result<Vec<JoinHandle<()>>, Fail> {
     // listen
     let listener = TcpListener::bind(addr).or_else(Fail::from)?;
     let listener = Arc::new(RwLock::new(listener));
+
+    // config
+    let http_options = Arc::new(http_options);
     let tls_config = Arc::new(tls_config);
 
     // start threads
     let mut handler_threads = Vec::new();
     (0..threads).for_each(|_| {
+        // clones
         let listener = listener.clone();
+        let http_options = http_options.clone();
         let tls_config = tls_config.clone();
+
+        // spawn thread
         handler_threads.push(thread::spawn(move || {
-            accept_connections(listener, tls_config, handler)
+            accept_connections(listener, http_options, tls_config, handler)
         }));
     });
 

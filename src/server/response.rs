@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ResponseContent {
     Text(String),
     Byte(Vec<u8>),
@@ -10,34 +10,39 @@ pub enum ResponseContent {
     StaticByte(&'static [u8]),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ResponseData<'a> {
-    pub status: Option<&'a str>,
-    pub headers: Option<BTreeMap<&'a str, &'a str>>,
+    pub status: &'a str,
+    pub headers: BTreeMap<&'a str, &'a str>,
+}
+
+impl<'a> ResponseData<'a> {
+    /// Create new with default values
+    pub fn new() -> Self {
+        Self {
+            status: "200 OK",
+            headers: BTreeMap::new(),
+        }
+    }
+
+    /// Change status
+    pub fn set_status(mut self, status: &'a str) -> Self {
+        self.status = status;
+        self
+    }
 }
 
 /// Create HTTP response
-pub fn respond(
-    content: ResponseContent,
-    content_type: &str,
-    data: Option<ResponseData>,
-) -> Vec<u8> {
+pub fn respond(content: ResponseContent, content_type: &str, data: ResponseData) -> Vec<u8> {
     // additional response data
-    let mut status = "200 OK";
+    let status = "200 OK";
     let mut headers = String::new();
-    if let Some(data) = data {
-        if let Some(data_status) = data.status {
-            status = data_status;
-        }
-        if let Some(data_headers) = data.headers {
-            data_headers.iter().for_each(|(k, v)| {
-                headers.push_str("\r\n");
-                headers.push_str(k);
-                headers.push_str(": ");
-                headers.push_str(v);
-            })
-        }
-    }
+    data.headers.iter().for_each(|(k, v)| {
+        headers.push_str("\r\n");
+        headers.push_str(k);
+        headers.push_str(": ");
+        headers.push_str(v);
+    });
 
     // create response
     let mut response = Vec::new();
@@ -89,12 +94,12 @@ pub fn redirect(url: &str) -> Vec<u8> {
     let mut headers = BTreeMap::new();
     headers.insert("location", url);
     let data = ResponseData {
-        status: Some("303 See Other"),
-        headers: Some(headers),
+        status: "303 See Other",
+        headers,
     };
     respond(
         ResponseContent::Text(format!("<html><head><title>Moved</title></head><body><h1>Moved</h1><p><a href=\"{0}\">{0}</a></p></body></html>", url)),
         "text/html",
-        Some(data)
+        data
         )
 }

@@ -1,6 +1,6 @@
 //! HTTP request parsing
 
-use crate::server::Stream;
+use crate::server::{HttpOptions, Stream};
 use kern::Fail;
 use std::collections::BTreeMap;
 use std::io::prelude::Read;
@@ -28,18 +28,19 @@ impl<'a> HttpRequest<'a> {
         raw_header: &'a str,
         mut raw_body: Vec<u8>,
         stream: &mut Stream,
+        http_options: &HttpOptions,
     ) -> Result<Self, Fail> {
         // split header
         let mut header = raw_header.lines();
         let mut reqln = header
             .next()
-            .ok_or_else(|| Fail::new("empty header"))?
+            .ok_or_else(|| Fail::new("Empty header"))?
             .split(' ');
 
         // parse method
         let method = if reqln
             .next()
-            .ok_or_else(|| Fail::new("no method in header"))?
+            .ok_or_else(|| Fail::new("No method in header"))?
             == "POST"
         {
             HttpMethod::POST
@@ -53,7 +54,7 @@ impl<'a> HttpRequest<'a> {
             let mut split_url = full_url.splitn(2, '?');
             let url = split_url
                 .next()
-                .ok_or_else(|| Fail::new("no url in header"))?;
+                .ok_or_else(|| Fail::new("No URL in header"))?;
             if let Some(params) = split_url.next() {
                 get_raw = params;
             }
@@ -85,21 +86,39 @@ impl<'a> HttpRequest<'a> {
             let con_len = buf_len
                 .parse::<usize>()
                 .ok()
-                .ok_or_else(|| Fail::new("content-length is not of type usize"))?;
+                .ok_or_else(|| Fail::new("Content-Length is not of type usize"))?;
+
+            // check if body size is ok.
+            if con_len > http_options.max_body_size {
+                return Fail::from("Max body size exceeded");
+            }
+
             // read body
+            let mut read_fails = 0;
             while raw_body.len() < con_len {
-                let mut rest_body = vec![0u8; 65536];
+                // read next buffer
+                let mut rest_body = vec![0u8; http_options.body_buffer];
                 let length = stream
                     .read(&mut rest_body)
                     .ok()
-                    .ok_or_else(|| Fail::new("stream broken"))?;
+                    .ok_or_else(|| Fail::new("Stream broken"))?;
                 rest_body.truncate(length);
                 raw_body.append(&mut rest_body);
+
+                // check if didn't read fully
+                if length < http_options.body_buffer {
+                    read_fails += 1;
+
+                    // failed too often
+                    if read_fails <= http_options.body_read_attempts {
+                        return Fail::from("Read body failed too often");
+                    }
+                }
             }
             // TODO parse not UTF-8 body file upload (binary, etc.)
             body = String::from_utf8(raw_body)
                 .ok()
-                .ok_or_else(|| Fail::new("body is not utf-8"))?;
+                .ok_or_else(|| Fail::new("Body is not UTF-8"))?;
         }
 
         // parse GET parameters and return

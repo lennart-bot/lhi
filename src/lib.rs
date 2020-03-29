@@ -1,6 +1,17 @@
 //! Lightweight HTTP library
 
+pub mod common;
 pub mod server;
 
-// TODO FIX POSSIBLE ENDLESS LOOP(S) CONSUMING 100% CPU (see stratos)
+use common::CARGO_TOML;
+use kern::{init_version, version as get_version};
+
+/// Get lhi version string
+pub fn version() -> &'static str {
+    match get_version() {
+        "" => init_version(CARGO_TOML),
+        version => version,
+    }
+}
+
 // TODO add tests
