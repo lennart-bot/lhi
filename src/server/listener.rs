@@ -1,6 +1,6 @@
 //! TCP listener
 
-use crate::server::{accept_connections, Handler, HttpOptions};
+use crate::server::{accept_connections, Handler, HttpSettings};
 use kern::Fail;
 use rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls::{NoClientAuth, ServerConfig};
@@ -14,7 +14,7 @@ use std::thread::{self, JoinHandle};
 pub fn listen(
     addr: &str,
     threads: u8,
-    http_options: HttpOptions,
+    http_options: HttpSettings,
     tls_config: ServerConfig,
     handler: Handler,
 ) -> Result<Vec<JoinHandle<()>>, Fail> {

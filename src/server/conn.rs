@@ -1,7 +1,7 @@
 //! HTTP connection handling
 
 use crate::{
-    server::{respond, Handler, HttpOptions, HttpRequest, ResponseContent, ResponseData, Stream},
+    server::{respond, Handler, HttpRequest, HttpSettings, ResponseContent, ResponseData, Stream},
     version,
 };
 use kern::Fail;
@@ -14,7 +14,7 @@ use std::thread;
 /// Accept connections
 pub fn accept_connections(
     listener: Arc<RwLock<TcpListener>>,
-    http_options: Arc<HttpOptions>,
+    http_options: Arc<HttpSettings>,
     tls_config: Arc<ServerConfig>,
     handler: Handler,
 ) {
@@ -35,7 +35,7 @@ pub fn accept_connections(
 /// Handle connection
 pub fn handle_connection(
     mut stream: TcpStream,
-    http_options: &HttpOptions,
+    http_options: &HttpSettings,
     tls_config: Arc<ServerConfig>,
     handler: Handler,
 ) -> Result<(), Fail> {
@@ -72,45 +72,83 @@ pub fn handle_connection(
     Ok(())
 }
 
-// Read until \r\n\r\n (just working, uncommented)
-fn read_header(stream: &mut Stream, http_options: &HttpOptions) -> Result<(String, Vec<u8>), Fail> {
+/// Read until \r\n\r\n
+fn read_header(
+    stream: &mut Stream,
+    http_options: &HttpSettings,
+) -> Result<(String, Vec<u8>), Fail> {
+    // initialize vectors
     let mut header = Vec::new();
     let mut rest = Vec::new();
     let mut buf = vec![0u8; http_options.header_buffer];
 
+    // read continously
+    let mut read_fails = 0;
     'l: loop {
+        // read from stream and check max header size
         let length = stream.read(&mut buf).or_else(Fail::from)?;
         if header.len() + length > http_options.max_header_size {
             return Fail::from("Max header size exceeded");
         }
+
+        // only use actually read data
         let buf = &buf[0..length];
-        'f: for (i, &c) in buf.iter().enumerate() {
-            if c == b'\r' {
+
+        // iterate through bytes
+        'f: for (i, &b) in buf.iter().enumerate() {
+            // check if byte is \r
+            if b == b'\r' {
+                // check if necessary to read 3 more bytes
                 if buf.len() < i + 4 {
+                    // read 3 more bytes
                     let mut buf_temp = vec![0u8; i + 4 - buf.len()];
                     stream.read(&mut buf_temp).or_else(Fail::from)?;
+
+                    // combine buffers and compare bytes
                     let mut buf2 = [&buf[..], &buf_temp[..]].concat();
                     let header_end =
                         buf2[i + 1] == b'\n' && buf2[i + 2] == b'\r' && buf2[i + 3] == b'\n';
+
+                    // add buffer to header and check if header end reached
                     header.append(&mut buf2);
                     if header_end {
+                        // header end reached
                         break 'l;
                     } else {
+                        // not yet, read more
                         break 'f;
                     }
+                // can read 3 more bytes, so compare
                 } else if buf[i + 1] == b'\n' && buf[i + 2] == b'\r' && buf[i + 3] == b'\n' {
+                    // split into header and rest
                     let (split1, split2) = buf.split_at(i + 4);
                     header.extend_from_slice(split1);
                     rest.extend_from_slice(split2);
+
+                    // header end reached
                     break 'l;
                 }
             }
+
+            // last byte reached, but end not reached yet
             if buf.len() == i + 1 {
+                // add buffer to header
                 header.extend_from_slice(&buf);
             }
         }
+
+        // check if didn't read fully
+        if length < http_options.header_buffer {
+            read_fails += 1;
+
+            // failed too often
+            if read_fails > http_options.header_read_attempts {
+                return Fail::from("Read header failed too often");
+            }
+        }
     }
-    println!("{}", String::from_utf8_lossy(&header));
+
+    // return header as string and rest
     Ok((
         match String::from_utf8(header) {
             Ok(header) => header,

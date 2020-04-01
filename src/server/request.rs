@@ -1,6 +1,6 @@
 //! HTTP request parsing
 
-use crate::server::{HttpOptions, Stream};
+use crate::server::{HttpSettings, Stream};
 use kern::Fail;
 use std::collections::BTreeMap;
 use std::io::prelude::Read;
@@ -18,17 +18,54 @@ pub struct HttpRequest<'a> {
     method: HttpMethod,
     url: &'a str,
     headers: BTreeMap<String, &'a str>,
-    get: BTreeMap<&'a str, &'a str>,
+    get: BTreeMap<String, &'a str>,
+    post: BTreeMap<String, String>,
     body: String,
 }
 
-// HTTP request implementation
 impl<'a> HttpRequest<'a> {
+    /// Get HTTP request method
+    pub fn method(&self) -> &HttpMethod {
+        // return HTTP request method
+        &self.method
+    }
+
+    /// Get URL
+    pub fn url(&self) -> &str {
+        // return URL
+        self.url
+    }
+
+    /// Get headers map
+    pub fn headers(&self) -> &BTreeMap<String, &str> {
+        // return headers map
+        &self.headers
+    }
+
+    /// Get GET parameters
+    pub fn get(&self) -> &BTreeMap<String, &str> {
+        // return GET parameters map
+        &self.get
+    }
+
+    /// Get POST parameters
+    pub fn post(&self) -> &BTreeMap<String, String> {
+        // return POST parameters map
+        &self.post
+    }
+
+    /// Get body
+    pub fn body(&self) -> &str {
+        // return body string
+        &self.body
+    }
+
+    /// Parse HTTP request
     pub fn from(
         raw_header: &'a str,
         mut raw_body: Vec<u8>,
         stream: &mut Stream,
-        http_options: &HttpOptions,
+        http_options: &HttpSettings,
     ) -> Result<Self, Fail> {
         // split header
         let mut header = raw_header.lines();
@@ -110,104 +147,80 @@ impl<'a> HttpRequest<'a> {
                     read_fails += 1;
 
                     // failed too often
-                    if read_fails <= http_options.body_read_attempts {
+                    if read_fails > http_options.body_read_attempts {
                         return Fail::from("Read body failed too often");
                     }
                 }
             }
+
             // TODO parse not UTF-8 body file upload (binary, etc.)
             body = String::from_utf8(raw_body)
                 .ok()
                 .ok_or_else(|| Fail::new("Body is not UTF-8"))?;
         }
 
-        // parse GET parameters and return
-        let get = parse_parameters(get_raw)?;
+        // parse GET and POST parameters
+        let get = parse_parameters(get_raw, |v| v)?;
+        let post = parse_post(&headers, &body)?;
+
+        // return request
         Ok(Self {
             method,
             url,
             headers,
             get,
+            post,
             body,
         })
     }
+}
 
-    /// Get HTTP request method
-    pub fn method(&self) -> &HttpMethod {
-        // return HTTP request method
-        &self.method
-    }
-
-    /// Get URL
-    pub fn url(&self) -> &str {
-        // return URL
-        self.url
-    }
-
-    /// Get headers map
-    pub fn headers(&self) -> &BTreeMap<String, &str> {
-        // return headers map
-        &self.headers
-    }
-
-    /// Get GET parameters
-    pub fn get(&self) -> &BTreeMap<&str, &str> {
-        // return GET parameters map
-        &self.get
-    }
-
-    /// Get body
-    pub fn body(&self) -> &str {
-        // return body string
-        &self.body
-    }
-
-    /// Parse POST parameters to map (EVERY CALL)
-    pub fn post(&self) -> Result<BTreeMap<&str, &str>, Fail> {
-        match self.headers.get("content-type") {
-            Some(&content_type_header) => {
-                let mut content_type_header = content_type_header.split(';').map(|s| s.trim());
-                let mut content_type = None;
-                let boundary = content_type_header.find_map(|s| {
-                    if s.starts_with("boundary=") {
-                        return s.split('=').nth(1);
-                    } else if content_type.is_none() {
-                        content_type = Some(s);
-                    }
-                    None
-                });
-                match content_type {
-                    Some(content_type) => {
-                        if content_type == "multipart/form-data" {
-                            parse_post_upload(
-                                &self.body,
-                                boundary
-                                    .ok_or_else(|| Fail::new("post upload, but no boundary"))?,
-                            )
-                        } else {
-                            parse_parameters(&self.body)
-                        }
-                    }
-                    None => parse_parameters(&self.body),
+/// Parse POST parameters to map
+fn parse_post(
+    headers: &BTreeMap<String, &str>,
+    body: &str,
+) -> Result<BTreeMap<String, String>, Fail> {
+    match headers.get("content-type") {
+        Some(&content_type_header) => {
+            let mut content_type_header = content_type_header.split(';').map(|s| s.trim());
+            let mut content_type = None;
+            let boundary = content_type_header.find_map(|s| {
+                if s.starts_with("boundary=") {
+                    return s.split('=').nth(1);
+                } else if content_type.is_none() {
+                    content_type = Some(s);
                 }
+                None
+            });
+            match content_type {
+                Some(content_type) => {
+                    if content_type == "multipart/form-data" {
+                        parse_post_upload(
+                            body,
+                            boundary.ok_or_else(|| Fail::new("post upload, but no boundary"))?,
+                        )
+                    } else {
+                        parse_parameters(body, |v| v.to_string())
+                    }
+                }
+                None => parse_parameters(body, |v| v.to_string()),
             }
-            None => parse_parameters(&self.body),
         }
+        None => parse_parameters(body, |v| v.to_string()),
     }
 }
 
-// Parse POST upload to map
-fn parse_post_upload<'a>(
-    body: &'a str,
-    boundary: &str,
-) -> Result<BTreeMap<&'a str, &'a str>, Fail> {
+/// Parse POST upload to map
+fn parse_post_upload(body: &str, boundary: &str) -> Result<BTreeMap<String, String>, Fail> {
     // parameters map
     let mut params = BTreeMap::new();
     // split body into sections
-    for section in body.split(&format!("--{}\r\n", boundary)).skip(1) {
-        // check if section ended
-        if section == "--" {
-            return Ok(params);
+    for mut section in body.split(&format!("--{}\r\n", boundary)).skip(1) {
+        // check if last section
+        let last_sep = format!("--{}--\r\n", boundary);
+        if section.ends_with(&last_sep) {
+            // remove ending seperator from last section
+            section = &section[..(section.len() - last_sep.len() - 2)];
         }
 
         // split lines (max 4)
@@ -243,15 +256,18 @@ fn parse_post_upload<'a>(
         };
 
         // insert into map
-        params.insert(name, value);
+        params.insert(name.to_lowercase(), value.to_string());
     }
 
     // return parameters map
     Ok(params)
 }
 
-// Parse GET parameters to map
-fn parse_parameters(raw: &str) -> Result<BTreeMap<&str, &str>, Fail> {
+/// Parse GET parameters to map
+fn parse_parameters<'a, V>(
+    raw: &'a str,
+    process_value: fn(&'a str) -> V,
+) -> Result<BTreeMap<String, V>, Fail> {
     // parameters map
     let mut params = BTreeMap::new();
 
@@ -262,12 +278,14 @@ fn parse_parameters(raw: &str) -> Result<BTreeMap<&str, &str>, Fail> {
         params.insert(
             ps.next()
                 .ok_or_else(|| Fail::new("broken x-www-form-urlencoded parameters"))?
-                .trim(), // trimmed key
-            if let Some(value) = ps.next() {
+                .trim()
+                .to_lowercase(), // trimmed key
+            // correct value type
+            process_value(if let Some(value) = ps.next() {
                 value.trim() // trimmed value
             } else {
                 "" // no value, is option
-            },
+            }),
         );
     }
 

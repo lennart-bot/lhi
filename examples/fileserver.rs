@@ -1,14 +1,14 @@
 extern crate lhi;
 
 use kern::Fail;
-use lhi::server::{listen, load_certificate, respond, HttpOptions, ResponseContent, ResponseData};
+use lhi::server::{listen, load_certificate, respond, HttpSettings, ResponseContent, ResponseData};
 use std::fs::File;
 use std::io::prelude::Read;
 
 fn main() {
     let config = load_certificate("examples/cert.pem", "examples/key.pem").unwrap();
-    let mut http_options = HttpOptions::new();
-    let _ = listen("[::]:8480", 4, http_options, config, |req| {
+    let http_options = HttpSettings::new();
+    let listeners = listen("[::]:8480", 4, http_options, config, |req| {
         let req = req?;
         let filename = req
             .get()
@@ -19,9 +19,12 @@ fn main() {
         file.read_to_string(&mut buf).or_else(Fail::from)?;
         Ok(respond(
             ResponseContent::Text(buf),
-            "text/plain",
+            "text/html",
             ResponseData::new(),
         ))
-    });
-    loop {}
+    })
+    .unwrap();
+    for listener in listeners {
+        listener.join().expect("listener thread crashed");
+    }
 }
