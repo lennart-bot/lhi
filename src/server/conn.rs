@@ -1,6 +1,7 @@
 //! HTTP connection handling
 
 use crate::{
+    name,
     server::{respond, Handler, HttpRequest, HttpSettings, ResponseData, Stream},
     version,
 };
@@ -59,7 +60,7 @@ pub fn handle_connection(
             match handler(http_request) {
                 Ok(response) => response,
                 Err(err) => respond(
-                    format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version()).as_bytes(),
+                    format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()).as_bytes(),
                     "text/html",
                     Some(ResponseData::new().set_status("400 Bad Request"))),
             }
@@ -69,7 +70,7 @@ pub fn handle_connection(
                 return Fail::from("Not a TLS connection");
             }
             respond(
-            format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version()).as_bytes(),
+            format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()).as_bytes(),
             "text/html",
             Some(ResponseData::new().set_status("400 Bad Request")),
         )
