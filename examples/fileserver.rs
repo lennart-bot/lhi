@@ -7,8 +7,8 @@ use std::io::prelude::Read;
 
 fn main() {
     let config = load_certificate("examples/cert.pem", "examples/key.pem").unwrap();
-    let http_options = HttpSettings::new();
-    let listeners = listen("[::]:8480", 4, http_options, config, |req| {
+    let http_settings = HttpSettings::new();
+    let listeners = listen("[::]:8480", 4, http_settings, config, |req| {
         let req = req?;
         let filename = req
             .get()

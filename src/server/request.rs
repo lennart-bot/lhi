@@ -65,7 +65,7 @@ impl<'a> HttpRequest<'a> {
         raw_header: &'a str,
         mut raw_body: Vec<u8>,
         stream: &mut Stream,
-        http_options: &HttpSettings,
+        http_settings: &HttpSettings,
     ) -> Result<Self, Fail> {
         // split header
         let mut header = raw_header.lines();
@@ -126,7 +126,7 @@ impl<'a> HttpRequest<'a> {
                 .ok_or_else(|| Fail::new("Content-Length is not of type usize"))?;
 
             // check if body size is ok.
-            if con_len > http_options.max_body_size {
+            if con_len > http_settings.max_body_size {
                 return Fail::from("Max body size exceeded");
             }
 
@@ -134,7 +134,7 @@ impl<'a> HttpRequest<'a> {
             let mut read_fails = 0;
             while raw_body.len() < con_len {
                 // read next buffer
-                let mut rest_body = vec![0u8; http_options.body_buffer];
+                let mut rest_body = vec![0u8; http_settings.body_buffer];
                 let length = stream
                     .read(&mut rest_body)
                     .ok()
@@ -143,11 +143,11 @@ impl<'a> HttpRequest<'a> {
                 raw_body.append(&mut rest_body);
 
                 // check if didn't read fully
-                if length < http_options.body_buffer {
+                if length < http_settings.body_buffer {
                     read_fails += 1;
 
                     // failed too often
-                    if read_fails > http_options.body_read_attempts {
+                    if read_fails > http_settings.body_read_attempts {
                         return Fail::from("Read body failed too often");
                     }
                 }

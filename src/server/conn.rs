@@ -14,7 +14,7 @@ use std::thread;
 /// Accept connections
 pub fn accept_connections(
     listener: Arc<RwLock<TcpListener>>,
-    http_options: Arc<HttpSettings>,
+    http_settings: Arc<HttpSettings>,
     tls_config: Arc<ServerConfig>,
     handler: Handler,
 ) {
@@ -22,11 +22,11 @@ pub fn accept_connections(
         // accept connection
         if let Ok((stream, _)) = listener.read().unwrap().accept() {
             // spawn new thread
-            let http_options = http_options.clone();
+            let http_settings = http_settings.clone();
             let tls_config = tls_config.clone();
             thread::spawn(move || {
                 // handle connection
-                handle_connection(stream, &http_options, tls_config, handler).ok();
+                handle_connection(stream, &http_settings, tls_config, handler).ok();
             });
         }
     }
@@ -35,33 +35,45 @@ pub fn accept_connections(
 /// Handle connection
 pub fn handle_connection(
     mut stream: TcpStream,
-    http_options: &HttpSettings,
+    http_settings: &HttpSettings,
     tls_config: Arc<ServerConfig>,
     handler: Handler,
 ) -> Result<(), Fail> {
+    // set timeouts
+    stream
+        .set_read_timeout(http_settings.read_timeout)
+        .or_else(Fail::from)?;
+    stream
+        .set_write_timeout(http_settings.write_timeout)
+        .or_else(Fail::from)?;
+
     // create TLS connection
     let mut session = ServerSession::new(&tls_config);
     let mut stream = RustlsStream::new(&mut session, &mut stream);
 
     // read header
-    let response = match read_header(&mut stream, http_options) {
+    let response = match read_header(&mut stream, http_settings) {
         Ok((header, rest)) => {
             // parse HTTP request and process
-            let http_request = HttpRequest::from(&header, rest, &mut stream, http_options);
+            let http_request = HttpRequest::from(&header, rest, &mut stream, http_settings);
             match handler(http_request) {
                 Ok(response) => response,
                 Err(err) => respond(
-                    err.to_string().as_bytes(),
-                    "text/plain",
-                    Some(ResponseData::new().set_status("400 Bad Request")),
-                ),
+                    format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version()).as_bytes(),
+                    "text/html",
+                    Some(ResponseData::new().set_status("400 Bad Request"))),
             }
         }
-        Err(err) => respond(
+        Err(err) => {
+            if err.err_msg() == "received corrupt message" {
+                return Fail::from("Not a TLS connection");
+            }
+            respond(
             format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version()).as_bytes(),
             "text/html",
             Some(ResponseData::new().set_status("400 Bad Request")),
-        ),
+        )
+        }
     };
 
     // respond
@@ -75,19 +87,19 @@ pub fn handle_connection(
 /// Read until \r\n\r\n
 fn read_header(
     stream: &mut Stream,
-    http_options: &HttpSettings,
+    http_settings: &HttpSettings,
 ) -> Result<(String, Vec<u8>), Fail> {
     // initialize vectors
     let mut header = Vec::new();
     let mut rest = Vec::new();
-    let mut buf = vec![0u8; http_options.header_buffer];
+    let mut buf = vec![0u8; http_settings.header_buffer];
 
     // read continously
     let mut read_fails = 0;
     'l: loop {
         // read from stream and check max header size
         let length = stream.read(&mut buf).or_else(Fail::from)?;
-        if header.len() + length > http_options.max_header_size {
+        if header.len() + length > http_settings.max_header_size {
             return Fail::from("Max header size exceeded");
         }
 
@@ -138,11 +150,11 @@ fn read_header(
         }
 
         // check if didn't read fully
-        if length < http_options.header_buffer {
+        if length < http_settings.header_buffer {
             read_fails += 1;
 
             // failed too often
-            if read_fails > http_options.header_read_attempts {
+            if read_fails > http_settings.header_read_attempts {
                 return Fail::from("Read header failed too often");
             }
         }

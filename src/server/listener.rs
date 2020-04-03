@@ -14,7 +14,7 @@ use std::thread::{self, JoinHandle};
 pub fn listen(
     addr: &str,
     threads: u8,
-    http_options: HttpSettings,
+    http_settings: HttpSettings,
     tls_config: ServerConfig,
     handler: Handler,
 ) -> Result<Vec<JoinHandle<()>>, Fail> {
@@ -23,7 +23,7 @@ pub fn listen(
     let listener = Arc::new(RwLock::new(listener));
 
     // config
-    let http_options = Arc::new(http_options);
+    let http_settings = Arc::new(http_settings);
     let tls_config = Arc::new(tls_config);
 
     // start threads
@@ -31,12 +31,12 @@ pub fn listen(
     (0..threads).for_each(|_| {
         // clones
         let listener = listener.clone();
-        let http_options = http_options.clone();
+        let http_settings = http_settings.clone();
         let tls_config = tls_config.clone();
 
         // spawn thread
         handler_threads.push(thread::spawn(move || {
-            accept_connections(listener, http_options, tls_config, handler)
+            accept_connections(listener, http_settings, tls_config, handler)
         }));
     });
 

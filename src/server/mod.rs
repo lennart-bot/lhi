@@ -13,6 +13,7 @@ pub use response::*;
 use kern::Fail;
 use rustls::{ServerSession, Stream as RustlsStream};
 use std::net::TcpStream;
+use std::time::Duration;
 
 /// TLS stream
 pub type Stream<'a> = RustlsStream<'a, ServerSession, TcpStream>;
@@ -29,6 +30,8 @@ pub struct HttpSettings {
     pub body_buffer: usize,
     pub header_read_attempts: usize,
     pub body_read_attempts: usize,
+    pub read_timeout: Option<Duration>,
+    pub write_timeout: Option<Duration>,
 }
 
 impl HttpSettings {
@@ -41,6 +44,8 @@ impl HttpSettings {
             body_buffer: 8192,
             header_read_attempts: 3,
             body_read_attempts: 3,
+            read_timeout: Some(Duration::from_secs(10)),
+            write_timeout: Some(Duration::from_secs(10)),
         }
     }
 }
