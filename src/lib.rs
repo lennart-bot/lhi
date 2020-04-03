@@ -3,11 +3,8 @@
 pub mod common;
 pub mod server;
 
-mod cargo_name;
-
-use cargo_name::{init_name, name as get_name};
 use common::CARGO_TOML;
-use kern::{init_version, version as get_version};
+use kern::{init_name, init_version, name as get_name, version as get_version};
 
 /// Get lhi version string
 pub fn version() -> &'static str {
