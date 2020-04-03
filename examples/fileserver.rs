@@ -1,7 +1,7 @@
 extern crate lhi;
 
 use kern::Fail;
-use lhi::server::{listen, load_certificate, respond, HttpSettings, ResponseContent, ResponseData};
+use lhi::server::{listen, load_certificate, respond, HttpSettings};
 use std::fs::File;
 use std::io::prelude::Read;
 
@@ -17,11 +17,7 @@ fn main() {
         let mut file = File::open(filename).or_else(Fail::from)?;
         let mut buf = String::new();
         file.read_to_string(&mut buf).or_else(Fail::from)?;
-        Ok(respond(
-            ResponseContent::Text(buf),
-            "text/html",
-            ResponseData::new(),
-        ))
+        Ok(respond(buf.as_bytes(), "text/html", None))
     })
     .unwrap();
     for listener in listeners {

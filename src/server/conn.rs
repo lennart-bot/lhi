@@ -1,7 +1,7 @@
 //! HTTP connection handling
 
 use crate::{
-    server::{respond, Handler, HttpRequest, HttpSettings, ResponseContent, ResponseData, Stream},
+    server::{respond, Handler, HttpRequest, HttpSettings, ResponseData, Stream},
     version,
 };
 use kern::Fail;
@@ -51,16 +51,16 @@ pub fn handle_connection(
             match handler(http_request) {
                 Ok(response) => response,
                 Err(err) => respond(
-                    ResponseContent::Text(err.to_string()),
+                    err.to_string().as_bytes(),
                     "text/plain",
-                    ResponseData::new().set_status("400 Bad Request"),
+                    Some(ResponseData::new().set_status("400 Bad Request")),
                 ),
             }
         }
         Err(err) => respond(
-            ResponseContent::Text(format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version())),
+            format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>ltheinrich.de/lhi v{1}</address></body></html>", err, version()).as_bytes(),
             "text/html",
-            ResponseData::new().set_status("400 Bad Request"),
+            Some(ResponseData::new().set_status("400 Bad Request")),
         ),
     };
 

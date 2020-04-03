@@ -2,15 +2,6 @@
 
 use std::collections::BTreeMap;
 
-/// Response content wrapper
-#[derive(Clone, Debug)]
-pub enum ResponseContent {
-    Text(String),
-    Byte(Vec<u8>),
-    StaticText(&'static str),
-    StaticByte(&'static [u8]),
-}
-
 /// Additional response data
 #[derive(Clone, Default, Debug)]
 pub struct ResponseData<'a> {
@@ -35,9 +26,13 @@ impl<'a> ResponseData<'a> {
 }
 
 /// Create HTTP response
-pub fn respond(content: ResponseContent, content_type: &str, data: ResponseData) -> Vec<u8> {
+pub fn respond(content: &[u8], content_type: &str, data: Option<ResponseData>) -> Vec<u8> {
     // additional response data
-    let status = "200 OK";
+    let data = match data {
+        Some(data) => data,
+        None => ResponseData::new(),
+    };
+    let status = data.status;
     let mut headers = String::new();
     data.headers.iter().for_each(|(k, v)| {
         headers.push_str("\r\n");
@@ -55,27 +50,8 @@ pub fn respond(content: ResponseContent, content_type: &str, data: ResponseData)
     response.extend_from_slice(header.as_bytes());
 
     // write content
-    match content {
-        ResponseContent::Text(text) => {
-            let content = text.as_bytes();
-            response.append(&mut set_content_length(content.len()));
-            response.extend_from_slice(content)
-        }
-        ResponseContent::Byte(byte) => {
-            let content = &byte;
-            response.append(&mut set_content_length(content.len()));
-            response.extend_from_slice(content)
-        }
-        ResponseContent::StaticText(text) => {
-            let content = text.as_bytes();
-            response.append(&mut set_content_length(content.len()));
-            response.extend_from_slice(content)
-        }
-        ResponseContent::StaticByte(content) => {
-            response.append(&mut set_content_length(content.len()));
-            response.extend_from_slice(content)
-        }
-    };
+    response.append(&mut set_content_length(content.len()));
+    response.extend_from_slice(content);
     response.extend_from_slice(b"\r\n");
 
     // return
@@ -106,8 +82,8 @@ pub fn redirect(url: &str) -> Vec<u8> {
 
     // create and return response
     respond(
-        ResponseContent::Text(format!("<html><head><title>Moved</title></head><body><h1>Moved</h1><p><a href=\"{0}\">{0}</a></p></body></html>", url)),
+        format!("<html><head><title>Moved</title></head><body><h1>Moved</h1><p><a href=\"{0}\">{0}</a></p></body></html>", url).as_bytes(),
         "text/html",
-        data
+        Some(data)
         )
 }
