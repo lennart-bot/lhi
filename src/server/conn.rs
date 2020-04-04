@@ -13,32 +13,37 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 /// Accept connections
-pub fn accept_connections(
+pub fn accept_connections<T: Send + Sync + 'static>(
     listener: Arc<RwLock<TcpListener>>,
     http_settings: Arc<HttpSettings>,
     tls_config: Arc<ServerConfig>,
-    handler: Handler,
+    handler: Handler<T>,
+    shared: Arc<RwLock<T>>,
 ) {
     loop {
         // accept connection
         if let Ok((stream, _)) = listener.read().unwrap().accept() {
-            // spawn new thread
+            // clones
             let http_settings = http_settings.clone();
             let tls_config = tls_config.clone();
+            let shared = shared.clone();
+
+            // spawn new thread
             thread::spawn(move || {
                 // handle connection
-                handle_connection(stream, &http_settings, tls_config, handler).ok();
+                handle_connection(stream, &http_settings, tls_config, handler, shared).ok();
             });
         }
     }
 }
 
 /// Handle connection
-pub fn handle_connection(
+pub fn handle_connection<T: Send + Sync + 'static>(
     mut stream: TcpStream,
     http_settings: &HttpSettings,
     tls_config: Arc<ServerConfig>,
-    handler: Handler,
+    handler: Handler<T>,
+    shared: Arc<RwLock<T>>,
 ) -> Result<(), Fail> {
     // set timeouts
     stream
@@ -57,7 +62,7 @@ pub fn handle_connection(
         Ok((header, rest)) => {
             // parse HTTP request and process
             let http_request = HttpRequest::from(&header, rest, &mut stream, http_settings);
-            match handler(http_request) {
+            match handler(http_request, shared) {
                 Ok(response) => response,
                 Err(err) => respond(
                     format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()).as_bytes(),

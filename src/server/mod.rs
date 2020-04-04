@@ -13,13 +13,14 @@ pub use response::*;
 use kern::Fail;
 use rustls::{ServerSession, Stream as RustlsStream};
 use std::net::TcpStream;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 /// TLS stream
 pub type Stream<'a> = RustlsStream<'a, ServerSession, TcpStream>;
 
 /// Handler function
-pub type Handler = fn(Result<HttpRequest, Fail>) -> Result<Vec<u8>, Fail>;
+pub type Handler<T> = fn(Result<HttpRequest, Fail>, Arc<RwLock<T>>) -> Result<Vec<u8>, Fail>;
 
 /// HTTP server settings
 #[derive(Clone, Debug, Default)]

@@ -11,12 +11,13 @@ use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
 
 /// Listen on TCP
-pub fn listen(
+pub fn listen<T: Send + Sync + 'static>(
     addr: &str,
     threads: u8,
     http_settings: HttpSettings,
     tls_config: ServerConfig,
-    handler: Handler,
+    handler: Handler<T>,
+    shared: Arc<RwLock<T>>,
 ) -> Result<Vec<JoinHandle<()>>, Fail> {
     // listen
     let listener = TcpListener::bind(addr).or_else(Fail::from)?;
@@ -33,10 +34,11 @@ pub fn listen(
         let listener = listener.clone();
         let http_settings = http_settings.clone();
         let tls_config = tls_config.clone();
+        let shared = shared.clone();
 
         // spawn thread
         handler_threads.push(thread::spawn(move || {
-            accept_connections(listener, http_settings, tls_config, handler)
+            accept_connections(listener, http_settings, tls_config, handler, shared)
         }));
     });
 
