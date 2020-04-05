@@ -65,7 +65,7 @@ pub fn handle_connection<T: Send + Sync + 'static>(
             match handler(http_request, shared) {
                 Ok(response) => response,
                 Err(err) => respond(
-                    format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()).as_bytes(),
+                    format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()),
                     "text/html",
                     Some(ResponseData::new().set_status("400 Bad Request"))),
             }
@@ -75,7 +75,7 @@ pub fn handle_connection<T: Send + Sync + 'static>(
                 return Fail::from("Not a TLS connection");
             }
             respond(
-            format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()).as_bytes(),
+            format!("<!DOCTYPE html><html><head><title>{0}</title></head><body><h3>HTTP server error</h3><p>{0}</p><hr><address>{1} v{2}</address></body></html>", err, name(), version()),
             "text/html",
             Some(ResponseData::new().set_status("400 Bad Request")),
         )

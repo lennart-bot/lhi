@@ -1,6 +1,7 @@
 //! HTTP response
 
 use std::collections::BTreeMap;
+use std::convert::AsRef;
 
 /// Additional response data
 #[derive(Clone, Default, Debug)]
@@ -26,7 +27,14 @@ impl<'a> ResponseData<'a> {
 }
 
 /// Create HTTP response
-pub fn respond(content: &[u8], content_type: &str, data: Option<ResponseData>) -> Vec<u8> {
+pub fn respond<T: AsRef<[u8]>>(
+    content: T,
+    content_type: &str,
+    data: Option<ResponseData>,
+) -> Vec<u8> {
+    // convert content to &[u8]
+    let content = content.as_ref();
+
     // additional response data
     let data = match data {
         Some(data) => data,
@@ -82,7 +90,7 @@ pub fn redirect(url: &str) -> Vec<u8> {
 
     // create and return response
     respond(
-        format!("<html><head><title>Moved</title></head><body><h1>Moved</h1><p><a href=\"{0}\">{0}</a></p></body></html>", url).as_bytes(),
+        format!("<html><head><title>Moved</title></head><body><h1>Moved</h1><p><a href=\"{0}\">{0}</a></p></body></html>", url),
         "text/html",
         Some(data)
         )

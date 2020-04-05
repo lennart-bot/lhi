@@ -26,7 +26,7 @@ fn main() {
             let mut file = File::open(filename).or_else(Fail::from)?;
             let mut buf = String::new();
             file.read_to_string(&mut buf).or_else(Fail::from)?;
-            Ok(respond(buf.as_bytes(), "text/html", None))
+            Ok(respond(buf, "text/html", None))
         },
         Arc::new(RwLock::new(0u32)),
     )
