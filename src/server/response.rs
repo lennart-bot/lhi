@@ -27,9 +27,9 @@ impl<'a> ResponseData<'a> {
 }
 
 /// Create HTTP response
-pub fn respond<T: AsRef<[u8]>>(
-    content: T,
-    content_type: &str,
+pub fn respond(
+    content: impl AsRef<[u8]>,
+    content_type: impl AsRef<str>,
     data: Option<ResponseData>,
 ) -> Vec<u8> {
     // convert content to &[u8]
@@ -53,7 +53,9 @@ pub fn respond<T: AsRef<[u8]>>(
     let mut response = Vec::new();
     let header = format!(
         "HTTP/1.1 {}\r\nserver: ltheinrich.de/lhi\r\ncontent-type: {}; charset=utf-8{}",
-        status, content_type, headers
+        status,
+        content_type.as_ref(),
+        headers
     );
     response.extend_from_slice(header.as_bytes());
 
@@ -77,7 +79,10 @@ fn set_content_length(content_length: usize) -> Vec<u8> {
 }
 
 /// Create HTTP redirect response
-pub fn redirect(url: &str) -> Vec<u8> {
+pub fn redirect(url: impl AsRef<str>) -> Vec<u8> {
+    // as ref
+    let url = url.as_ref();
+
     // set location
     let mut headers = BTreeMap::new();
     headers.insert("location", url);

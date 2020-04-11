@@ -4,6 +4,7 @@ mod conn;
 mod listener;
 mod request;
 mod response;
+pub mod unsecure;
 
 pub use conn::*;
 pub use listener::*;

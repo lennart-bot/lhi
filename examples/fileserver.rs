@@ -1,7 +1,7 @@
 extern crate lhi;
 
 use kern::Fail;
-use lhi::server::{listen, load_certificate, respond, HttpSettings};
+use lhi::server::{listen, load_certificate, respond, unsecure::listen_redirect, HttpSettings};
 use std::fs::File;
 use std::io::prelude::Read;
 use std::sync::{Arc, RwLock};
@@ -31,6 +31,7 @@ fn main() {
         Arc::new(RwLock::new(0u32)),
     )
     .unwrap();
+    listen_redirect("[::]:8080", "localhost:8480".to_string()).unwrap();
     for listener in listeners {
         listener.join().expect("listener thread crashed");
     }
