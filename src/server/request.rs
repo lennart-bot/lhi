@@ -223,8 +223,8 @@ fn parse_post_upload(body: &str, boundary: &str) -> Result<BTreeMap<String, Stri
             section = &section[..(section.len() - last_sep.len() - 2)];
         }
 
-        // split lines (max 4)
-        let mut lines = section.splitn(4, "\r\n");
+        // split lines (max 3)
+        let mut lines = section.splitn(3, "\r\n");
         let mut next_line = || {
             lines
                 .next()
@@ -246,17 +246,26 @@ fn parse_post_upload(body: &str, boundary: &str) -> Result<BTreeMap<String, Stri
             .ok_or_else(|| Fail::new("missing name in post body section"))?;
 
         // get value
-        let value = if next_line()? == "" {
-            // next line is value
-            next_line()?
+        next_line()?;
+        let data_section = next_line()?;
+        let mut data_lines = data_section.splitn(2, "\r\n");
+        let next_data_line = data_lines
+            .next()
+            .ok_or_else(|| Fail::new("broken section in post body"))?;
+        let value = if let Some(file_data_line) = data_lines.next() {
+            if next_data_line == "" {
+                file_data_line.to_string()
+            } else if file_data_line == "" {
+                next_data_line.to_string()
+            } else {
+                format!("{}\r\n{}", next_data_line, file_data_line)
+            }
         } else {
-            // skip one line, next is value
-            next_line()?;
-            next_line()?
+            next_data_line.to_string()
         };
 
         // insert into map
-        params.insert(name.to_lowercase(), value.to_string());
+        params.insert(name.to_lowercase(), value);
     }
 
     // return parameters map
