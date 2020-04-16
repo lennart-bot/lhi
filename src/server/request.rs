@@ -167,13 +167,12 @@ impl<'a> HttpRequest<'a> {
                 }
             }
 
-            // TODO parse not UTF-8 body file upload (binary, etc.)
             body = raw_body;
         }
 
         // parse GET and POST parameters
         let get = parse_parameters(get_raw, |v| v)?;
-        let post = parse_post(&headers, &body)?;
+        let post = parse_post(&headers, &body).unwrap_or_default();
 
         // return request
         Ok(Self {
