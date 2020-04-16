@@ -1,10 +1,10 @@
 //! HTTP request parsing
 
 use crate::server::{HttpSettings, Stream};
+use kern::byte::{split, splitn};
 use kern::Fail;
 use std::collections::BTreeMap;
 use std::io::prelude::Read;
-use std::str::from_utf8;
 
 /// HTTP request method (GET or POST)
 #[derive(Debug, PartialEq)]
@@ -20,7 +20,7 @@ pub struct HttpRequest<'a> {
     url: &'a str,
     headers: BTreeMap<String, &'a str>,
     get: BTreeMap<String, &'a str>,
-    post: BTreeMap<String, String>,
+    post: BTreeMap<String, Vec<u8>>,
     body: Vec<u8>,
 }
 
@@ -50,9 +50,22 @@ impl<'a> HttpRequest<'a> {
     }
 
     /// Get POST parameters
-    pub fn post(&self) -> &BTreeMap<String, String> {
+    pub fn post(&self) -> &BTreeMap<String, Vec<u8>> {
         // return POST parameters map
         &self.post
+    }
+
+    /// Get POST parameters
+    pub fn post_utf8(&self) -> BTreeMap<String, String> {
+        // init map and iterate through byte map
+        let mut post_utf8 = BTreeMap::new();
+        for (k, v) in &self.post {
+            // parse and insert
+            post_utf8.insert(k.to_string(), String::from_utf8_lossy(&v).to_string());
+        }
+
+        // return new UTF-8 POST parameters map
+        post_utf8
     }
 
     /// Get body
@@ -160,8 +173,7 @@ impl<'a> HttpRequest<'a> {
 
         // parse GET and POST parameters
         let get = parse_parameters(get_raw, |v| v)?;
-        let body_utf8 = from_utf8(&body).unwrap_or_default();
-        let post = parse_post(&headers, &body_utf8)?;
+        let post = parse_post(&headers, &body)?;
 
         // return request
         Ok(Self {
@@ -178,8 +190,8 @@ impl<'a> HttpRequest<'a> {
 /// Parse POST parameters to map
 fn parse_post(
     headers: &BTreeMap<String, &str>,
-    body: &str,
-) -> Result<BTreeMap<String, String>, Fail> {
+    body: &[u8],
+) -> Result<BTreeMap<String, Vec<u8>>, Fail> {
     match headers.get("content-type") {
         Some(&content_type_header) => {
             let mut content_type_header = content_type_header.split(';').map(|s| s.trim());
@@ -200,45 +212,51 @@ fn parse_post(
                             boundary.ok_or_else(|| Fail::new("post upload, but no boundary"))?,
                         )
                     } else {
-                        parse_parameters(body, |v| v.to_string())
+                        parse_parameters(
+                            &String::from_utf8(body.to_vec()).or_else(Fail::from)?,
+                            |v| v.as_bytes().to_vec(),
+                        )
                     }
                 }
-                None => parse_parameters(body, |v| v.to_string()),
+                None => parse_parameters(
+                    &String::from_utf8(body.to_vec()).or_else(Fail::from)?,
+                    |v| v.as_bytes().to_vec(),
+                ),
             }
         }
-        None => parse_parameters(body, |v| v.to_string()),
+        None => parse_parameters(
+            &String::from_utf8(body.to_vec()).or_else(Fail::from)?,
+            |v| v.as_bytes().to_vec(),
+        ),
     }
 }
 
 /// Parse POST upload to map
-fn parse_post_upload(body: &str, boundary: &str) -> Result<BTreeMap<String, String>, Fail> {
+fn parse_post_upload(body: &[u8], boundary: &str) -> Result<BTreeMap<String, Vec<u8>>, Fail> {
     // parameters map
     let mut params = BTreeMap::new();
+
     // split body into sections
-    for mut section in body.split(&format!("--{}\r\n", boundary)).skip(1) {
+    let mut sections = split(&body, &format!("--{}\r\n", boundary));
+    sections.remove(0);
+    for mut section in sections {
         // check if last section
         let last_sep = format!("--{}--\r\n", boundary);
-        if section.ends_with(&last_sep) {
+        if section.ends_with(last_sep.as_bytes()) {
             // remove ending seperator from last section
             section = &section[..(section.len() - last_sep.len() - 2)];
         }
-
         // split lines (max 3)
-        let mut lines = section.splitn(3, "\r\n");
-        let mut next_line = || {
-            lines
-                .next()
-                .ok_or_else(|| Fail::new("broken section in post body"))
-        };
+        let lines = splitn(3, &section, b"\r\n");
 
         // parse name
-        let name = next_line()?
+        let name = String::from_utf8_lossy(lines[0])
             .split(';')
             .map(|s| s.trim())
             .find_map(|s| {
                 if s.starts_with("name=") {
                     let name = s.split('=').nth(1)?;
-                    Some(&name[1..(name.len() - 1)])
+                    Some(name[1..(name.len() - 1)].to_lowercase())
                 } else {
                     None
                 }
@@ -246,26 +264,29 @@ fn parse_post_upload(body: &str, boundary: &str) -> Result<BTreeMap<String, Stri
             .ok_or_else(|| Fail::new("missing name in post body section"))?;
 
         // get value
-        next_line()?;
-        let data_section = next_line()?;
-        let mut data_lines = data_section.splitn(2, "\r\n");
-        let next_data_line = data_lines
-            .next()
+        let data_section = lines
+            .get(2)
             .ok_or_else(|| Fail::new("broken section in post body"))?;
-        let value = if let Some(file_data_line) = data_lines.next() {
-            if next_data_line == "" {
-                file_data_line.to_string()
-            } else if file_data_line == "" {
-                next_data_line.to_string()
+        let data_lines = splitn(2, data_section, b"\r\n");
+        let next_data_line = data_lines
+            .get(0)
+            .ok_or_else(|| Fail::new("broken section in post body"))?;
+        let value = if let Some(file_data_line) = data_lines.get(1) {
+            if next_data_line.is_empty() {
+                file_data_line.to_vec()
+            } else if file_data_line.is_empty() {
+                next_data_line.to_vec()
             } else {
-                format!("{}\r\n{}", next_data_line, file_data_line)
+                [&next_data_line[..], &b"\r\n"[..], &file_data_line[..]]
+                    .concat()
+                    .to_vec()
             }
         } else {
-            next_data_line.to_string()
+            next_data_line.to_vec()
         };
 
         // insert into map
-        params.insert(name.to_lowercase(), value);
+        params.insert(name, value);
     }
 
     // return parameters map

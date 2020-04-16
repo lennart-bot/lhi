@@ -4,7 +4,7 @@ pub mod common;
 pub mod server;
 
 use common::CARGO_TOML;
-use kern::{init_name, init_version, name as get_name, version as get_version};
+use kern::meta::{init_name, init_version, name as get_name, version as get_version};
 
 /// Get lhi version string
 pub fn version() -> &'static str {
