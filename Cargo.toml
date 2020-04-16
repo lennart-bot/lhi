@@ -1,6 +1,6 @@
 [package]
 name = "lhi"
-version = "0.0.0-dev.11"
+version = "0.0.0-dev.12"
 authors = ["Lennart Heinrich <lennart@ltheinrich.de>"]
 edition = "2018"
 license = "ISC"

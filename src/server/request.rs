@@ -4,6 +4,7 @@ use crate::server::{HttpSettings, Stream};
 use kern::Fail;
 use std::collections::BTreeMap;
 use std::io::prelude::Read;
+use std::str::from_utf8;
 
 /// HTTP request method (GET or POST)
 #[derive(Debug, PartialEq)]
@@ -20,7 +21,7 @@ pub struct HttpRequest<'a> {
     headers: BTreeMap<String, &'a str>,
     get: BTreeMap<String, &'a str>,
     post: BTreeMap<String, String>,
-    body: String,
+    body: Vec<u8>,
 }
 
 impl<'a> HttpRequest<'a> {
@@ -55,7 +56,7 @@ impl<'a> HttpRequest<'a> {
     }
 
     /// Get body
-    pub fn body(&self) -> &str {
+    pub fn body(&self) -> &[u8] {
         // return body string
         &self.body
     }
@@ -117,7 +118,7 @@ impl<'a> HttpRequest<'a> {
         };
 
         // read rest of body
-        let mut body = String::new();
+        let mut body = Vec::new();
         if let Some(buf_len) = buf_len {
             // parse buffer length
             let con_len = buf_len
@@ -154,14 +155,13 @@ impl<'a> HttpRequest<'a> {
             }
 
             // TODO parse not UTF-8 body file upload (binary, etc.)
-            body = String::from_utf8(raw_body)
-                .ok()
-                .ok_or_else(|| Fail::new("Body is not UTF-8"))?;
+            body = raw_body;
         }
 
         // parse GET and POST parameters
         let get = parse_parameters(get_raw, |v| v)?;
-        let post = parse_post(&headers, &body)?;
+        let body_utf8 = from_utf8(&body).unwrap_or_default();
+        let post = parse_post(&headers, &body_utf8)?;
 
         // return request
         Ok(Self {
