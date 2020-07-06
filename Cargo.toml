@@ -10,4 +10,4 @@ readme = "README.md"
 
 [dependencies]
 kern = "1.1.6"
-rustls = "0.17.0"
+rustls = "0.18.0"
